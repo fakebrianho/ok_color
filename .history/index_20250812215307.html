@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Outline Effect</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+
+    .controls {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input[type="range"] {
+      width: 100px;
+    }
+
+    input[type="file"] {
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+
+    button {
+      padding: 8px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #sketch-container {
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      display: inline-block;
+      background: white;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Photo Outline Effect</h1>
+  <p>Upload an image to see it transformed with faint outlines, or use the default sample image.</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="fileInput">Upload Image:</label>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div class="control-group">
+      <label for="threshold">Threshold:</label>
+      <input type="range" id="threshold" min="0.1" max="1.0" step="0.05" value="0.3">
+      <span id="thresholdValue">0.3</span>
+    </div>
+    <div class="control-group">
+      <label for="opacity">Opacity:</label>
+      <input type="range" id="opacity" min="0.1" max="1.0" step="0.05" value="0.6">
+      <span id="opacityValue">0.6</span>
+    </div>
+    <button onclick="saveImage()">Save Result</button>
+    <button onclick="toggleOriginal()">Toggle Original</button>
+  </div>
+
+  <div id="sketch-container"></div>
+
+  <script>
+    let img;
+    let outlineImg;
+    let threshold = 0.3;
+    let outlineOpacity = 0.6;
+    let showOriginal = false;
+    let imageLoaded = false;
+
+    // Sample image data URL (small geometric pattern)
+    const sampleImageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVY/j//z8DJQAggBhJVQwQQIykKgYIIEZSFQMEECOpigECiJFUxQABxEiqYoAAYiRVMUAAMZKqGCCAGElVDBBAjKQqBgggRlIVAwQQI6mKAQKIkVTFAAHESKpigABiJFUxQAAxkqoYIIAYSVUMEECMpCoGCCBGUhUDBBAjqYoBAmANZAIAAYSNZgAAAABJRU5ErkJggg==";
+
+    function preload() {
+      img = loadImage(sampleImageData);
+    }
+
+    function setup() {
+      let canvas = createCanvas(600, 400);
+      canvas.parent('sketch-container');
+
+      // Set up file input
+      let fileInput = document.getElementById('fileInput');
+      fileInput.addEventListener('change', handleFile);
+
+      // Set up sliders
+      let thresholdSlider = document.getElementById('threshold');
+      let opacitySlider = document.getElementById('opacity');
+
+      thresholdSlider.addEventListener('input', function () {
+        threshold = parseFloat(this.value);
+        document.getElementById('thresholdValue').textContent = threshold;
+        if (imageLoaded) createOutline();
+      });
+
+      opacitySlider.addEventListener('input', function () {
+        outlineOpacity = parseFloat(this.value);
+        document.getElementById('opacityValue').textContent = outlineOpacity;
+      });
+
+      imageLoaded = true;
+      createOutline();
+    }
+
+    function handleFile(event) {
+      let file = event.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        let reader = new FileReader();
+        reader.onload = function (e) {
+          img = loadImage(e.target.result, function () {
+            imageLoaded = true;
+            createOutline();
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function createOutline() {
+      if (!img) return;
+
+      // Create a copy for outline processing
+      outlineImg = createGraphics(img.width, img.height);
+      outlineImg.image(img, 0, 0);
+
+      // Load pixels for edge detection
+      outlineImg.loadPixels();
+      let pixels = outlineImg.pixels;
+      let newPixels = new Array(pixels.length);
+
+      // Sobel edge detection
+      for (let x = 1; x < img.width - 1; x++) {
+        for (let y = 1; y < img.height - 1; y++) {
+          let idx = (x + y * img.width) * 4;
+
+          // Get surrounding pixels for Sobel operator
+          let gx = 0, gy = 0;
+
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              let pixelIdx = ((x + dx) + (y + dy) * img.width) * 4;
+              let gray = (pixels[pixelIdx] + pixels[pixelIdx + 1] + pixels[pixelIdx + 2]) / 3;
+
+              // Sobel X kernel: [-1,0,1], [-2,0,2], [-1,0,1]
+              let sobelX = (dx === -1) ? -1 : (dx === 1) ? 1 : 0;
+              if (dy === 0 && dx !== 0) sobelX *= 2;
+
+              // Sobel Y kernel: [-1,-2,-1], [0,0,0], [1,2,1]
+              let sobelY = (dy === -1) ? -1 : (dy === 1) ? 1 : 0;
+              if (dy !== 0 && dx === 0) sobelY *= 2;
+
+              gx += gray * sobelX;
+              gy += gray * sobelY;
+            }
+          }
+
+          // Calculate edge magnitude
+          let magnitude = Math.sqrt(gx * gx + gy * gy) / 255;
+
+          // Apply threshold for faint outlines
+          let edgeStrength = magnitude > threshold ? 255 - (magnitude * 200) : 255;
+
+          newPixels[idx] = edgeStrength;     // R
+          newPixels[idx + 1] = edgeStrength; // G
+          newPixels[idx + 2] = edgeStrength; // B
+          newPixels[idx + 3] = 255;          // A
+        }
+      }
+
+      // Fill edges
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (newPixels[i] === undefined) {
+          newPixels[i] = 255;
+          newPixels[i + 1] = 255;
+          newPixels[i + 2] = 255;
+          newPixels[i + 3] = 255;
+        }
+      }
+
+      // Update pixels
+      for (let i = 0; i < pixels.length; i++) {
+        outlineImg.pixels[i] = newPixels[i];
+      }
+      outlineImg.updatePixels();
+    }
+
+    function draw() {
+      background(255);
+
+      if (!img) return;
+
+      // Calculate display size maintaining aspect ratio
+      let displayWidth = width;
+      let displayHeight = height;
+      let imgRatio = img.width / img.height;
+      let canvasRatio = width / height;
+
+      if (imgRatio > canvasRatio) {
+        displayHeight = width / imgRatio;
+      } else {
+        displayWidth = height * imgRatio;
+      }
+
+      let x = (width - displayWidth) / 2;
+      let y = (height - displayHeight) / 2;
+
+      if (showOriginal) {
+        // Show original image
+        image(img, x, y, displayWidth, displayHeight);
+      } else if (outlineImg) {
+        // Show original image first (faded)
+        tint(255, 100);
+        image(img, x, y, displayWidth, displayHeight);
+        noTint();
+
+        // Overlay outline with specified opacity
+        tint(255, outlineOpacity * 255);
+        image(outlineImg, x, y, displayWidth, displayHeight);
+        noTint();
+      }
+    }
+
+    function saveImage() {
+      if (outlineImg) {
+        save('photo-outline.png');
+      }
+    }
+
+    function toggleOriginal() {
+      showOriginal = !showOriginal;
+    }
+  </script>
+</body>
+
+</html>
