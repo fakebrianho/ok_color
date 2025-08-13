@@ -69,14 +69,6 @@
       color: #666;
       margin-top: 5px;
     }
-
-    select {
-      padding: 5px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-      background: white;
-      font-size: 14px;
-    }
   </style>
 </head>
 
@@ -114,25 +106,13 @@
       <input type="range" id="bgOpacity" min="0.0" max="1.0" step="0.05" value="0.3">
       <span id="bgOpacityValue">0.3</span>
     </div>
-    <div class="control-group">
-      <label for="brushType">Brush Type:</label>
-      <select id="brushType">
-        <option value="pencil">Pencil</option>
-        <option value="charcoal">Charcoal</option>
-        <option value="ink">Ink Pen</option>
-        <option value="crosshatch">Cross Hatch</option>
-        <option value="stipple">Stipple</option>
-        <option value="watercolor">Watercolor</option>
-      </select>
-    </div>
     <button onclick="redrawOutlines()">Redraw</button>
     <button onclick="saveImage()">Save Result</button>
     <button onclick="toggleOriginal()">Toggle Original</button>
   </div>
 
   <div class="brush-info">
-    Choose from 6 different artistic brush styles: Pencil (light sketchy), Charcoal (thick soft), Ink (clean lines),
-    Cross Hatch (traditional), Stipple (dotted), Watercolor (flowing)
+    Brush strokes are drawn along detected edges with natural variation and texture
   </div>
 
   <div id="sketch-container"></div>
@@ -146,7 +126,6 @@
     let brushOpacity = 0.7;
     let density = 4;
     let bgOpacity = 0.3;
-    let brushType = 'pencil';
     let showOriginal = false;
     let imageLoaded = false;
     let isDrawing = false;
@@ -176,13 +155,6 @@
       setupSlider('brushOpacity', (val) => { brushOpacity = val; });
       setupSlider('density', (val) => { density = parseInt(val); });
       setupSlider('bgOpacity', (val) => { bgOpacity = val; });
-
-      // Set up brush type selector
-      let brushSelect = document.getElementById('brushType');
-      brushSelect.addEventListener('change', function () {
-        brushType = this.value;
-        if (imageLoaded) drawBrushStrokes();
-      });
 
       imageLoaded = true;
       detectEdges();
@@ -345,193 +317,50 @@
     function drawBrushStroke(strokePoints) {
       if (strokePoints.length < 2) return;
 
-      switch (brushType) {
-        case 'pencil':
-          drawPencilStroke(strokePoints);
-          break;
-        case 'charcoal':
-          drawCharcoalStroke(strokePoints);
-          break;
-        case 'ink':
-          drawInkStroke(strokePoints);
-          break;
-        case 'crosshatch':
-          drawCrosshatchStroke(strokePoints);
-          break;
-        case 'stipple':
-          drawStippleStroke(strokePoints);
-          break;
-        case 'watercolor':
-          drawWatercolorStroke(strokePoints);
-          break;
-      }
-    }
-
-    function drawPencilStroke(strokePoints) {
-      // Light, sketchy pencil marks
+      // Draw individual brush marks along the stroke path
       for (let i = 0; i < strokePoints.length; i++) {
         let point = strokePoints[i];
-        let strokeAngle = point.angle + PI / 2;
-        let numMarks = Math.max(1, Math.floor(density * 0.8));
+
+        // Calculate stroke direction perpendicular to edge direction
+        let strokeAngle = point.angle + PI / 2; // Perpendicular to edge
+
+        // Draw multiple brush marks for texture
+        let numMarks = Math.max(1, Math.floor(density));
 
         for (let mark = 0; mark < numMarks; mark++) {
-          let alpha = map(mark, 0, numMarks - 1, brushOpacity * 180, brushOpacity * 60);
-          let weight = brushSize * random(0.3, 0.8);
-          let length = brushSize * random(2, 5);
+          let alpha = map(mark, 0, numMarks - 1, brushOpacity * 255, brushOpacity * 80);
+          let weight = brushSize * random(0.5, 1.5);
+          let length = brushSize * random(2, 6);
 
           brushLayer.stroke(0, 0, 0, alpha);
           brushLayer.strokeWeight(weight);
           brushLayer.strokeCap(ROUND);
 
-          let angleVariation = random(-0.4, 0.4);
+          // Calculate start and end points of brush mark
+          let angleVariation = random(-0.3, 0.3); // Add natural variation
           let actualAngle = strokeAngle + angleVariation;
 
-          let startX = point.x + cos(actualAngle) * (-length / 2) + random(-brushSize * 0.7, brushSize * 0.7);
-          let startY = point.y + sin(actualAngle) * (-length / 2) + random(-brushSize * 0.7, brushSize * 0.7);
-          let endX = point.x + cos(actualAngle) * (length / 2) + random(-brushSize * 0.3, brushSize * 0.3);
-          let endY = point.y + sin(actualAngle) * (length / 2) + random(-brushSize * 0.3, brushSize * 0.3);
-
-          brushLayer.line(startX, startY, endX, endY);
-        }
-      }
-    }
-
-    function drawCharcoalStroke(strokePoints) {
-      // Thick, soft charcoal marks
-      for (let i = 0; i < strokePoints.length; i++) {
-        let point = strokePoints[i];
-        let strokeAngle = point.angle + PI / 2;
-        let numMarks = Math.max(2, Math.floor(density * 1.5));
-
-        for (let mark = 0; mark < numMarks; mark++) {
-          let alpha = map(mark, 0, numMarks - 1, brushOpacity * 120, brushOpacity * 40);
-          let weight = brushSize * random(1.5, 3.0);
-          let length = brushSize * random(3, 8);
-
-          brushLayer.stroke(0, 0, 0, alpha);
-          brushLayer.strokeWeight(weight);
-          brushLayer.strokeCap(ROUND);
-
-          let angleVariation = random(-0.2, 0.2);
-          let actualAngle = strokeAngle + angleVariation;
-
-          let startX = point.x + cos(actualAngle) * (-length / 2) + random(-brushSize, brushSize);
-          let startY = point.y + sin(actualAngle) * (-length / 2) + random(-brushSize, brushSize);
+          let startX = point.x + cos(actualAngle) * (-length / 2) + random(-brushSize * 0.5, brushSize * 0.5);
+          let startY = point.y + sin(actualAngle) * (-length / 2) + random(-brushSize * 0.5, brushSize * 0.5);
           let endX = point.x + cos(actualAngle) * (length / 2) + random(-brushSize * 0.5, brushSize * 0.5);
           let endY = point.y + sin(actualAngle) * (length / 2) + random(-brushSize * 0.5, brushSize * 0.5);
 
-          brushLayer.line(startX, startY, endX, endY);
-        }
-      }
-    }
-
-    function drawInkStroke(strokePoints) {
-      // Clean, precise ink lines
-      if (strokePoints.length < 2) return;
-
-      brushLayer.stroke(0, 0, 0, brushOpacity * 255);
-      brushLayer.strokeWeight(brushSize * random(0.8, 1.2));
-      brushLayer.strokeCap(ROUND);
-      brushLayer.noFill();
-
-      brushLayer.beginShape();
-      for (let i = 0; i < strokePoints.length; i++) {
-        let point = strokePoints[i];
-        let offsetX = random(-brushSize * 0.1, brushSize * 0.1);
-        let offsetY = random(-brushSize * 0.1, brushSize * 0.1);
-
-        if (i === 0) {
-          brushLayer.vertex(point.x + offsetX, point.y + offsetY);
-        } else {
-          brushLayer.curveVertex(point.x + offsetX, point.y + offsetY);
-        }
-      }
-      brushLayer.endShape();
-    }
-
-    function drawCrosshatchStroke(strokePoints) {
-      // Cross-hatched drawing style
-      for (let i = 0; i < strokePoints.length; i++) {
-        let point = strokePoints[i];
-        let strokeAngle = point.angle + PI / 2;
-
-        // Primary hatch direction
-        for (let mark = 0; mark < density; mark++) {
-          let alpha = brushOpacity * random(100, 200);
-          let weight = brushSize * random(0.4, 0.7);
-          let length = brushSize * random(2, 4);
-
-          brushLayer.stroke(0, 0, 0, alpha);
-          brushLayer.strokeWeight(weight);
-
-          let startX = point.x + cos(strokeAngle) * (-length / 2);
-          let startY = point.y + sin(strokeAngle) * (-length / 2);
-          let endX = point.x + cos(strokeAngle) * (length / 2);
-          let endY = point.y + sin(strokeAngle) * (length / 2);
-
+          // Draw the brush mark
           brushLayer.line(startX, startY, endX, endY);
 
-          // Cross hatch
-          if (random() < 0.6) {
-            let crossAngle = strokeAngle + PI / 3;
-            let crossStartX = point.x + cos(crossAngle) * (-length / 3);
-            let crossStartY = point.y + sin(crossAngle) * (-length / 3);
-            let crossEndX = point.x + cos(crossAngle) * (length / 3);
-            let crossEndY = point.y + sin(crossAngle) * (length / 3);
+          // Add some shorter cross-hatching marks occasionally
+          if (random() < 0.2) {
+            let crossAngle = actualAngle + PI / 4;
+            let crossLength = length * 0.6;
+            let crossStartX = point.x + cos(crossAngle) * (-crossLength / 2);
+            let crossStartY = point.y + sin(crossAngle) * (-crossLength / 2);
+            let crossEndX = point.x + cos(crossAngle) * (crossLength / 2);
+            let crossEndY = point.y + sin(crossAngle) * (crossLength / 2);
 
-            brushLayer.stroke(0, 0, 0, alpha * 0.7);
+            brushLayer.stroke(0, 0, 0, alpha * 0.5);
+            brushLayer.strokeWeight(weight * 0.7);
             brushLayer.line(crossStartX, crossStartY, crossEndX, crossEndY);
           }
-        }
-      }
-    }
-
-    function drawStippleStroke(strokePoints) {
-      // Stippled/dotted drawing style
-      for (let i = 0; i < strokePoints.length; i++) {
-        let point = strokePoints[i];
-        let numDots = Math.max(3, Math.floor(density * 2));
-
-        for (let dot = 0; dot < numDots; dot++) {
-          let alpha = brushOpacity * random(150, 255);
-          let dotSize = brushSize * random(0.3, 1.2);
-
-          brushLayer.stroke(0, 0, 0, alpha);
-          brushLayer.strokeWeight(dotSize);
-
-          let dotX = point.x + random(-brushSize * 1.5, brushSize * 1.5);
-          let dotY = point.y + random(-brushSize * 1.5, brushSize * 1.5);
-
-          brushLayer.point(dotX, dotY);
-        }
-      }
-    }
-
-    function drawWatercolorStroke(strokePoints) {
-      // Soft, flowing watercolor style
-      for (let i = 0; i < strokePoints.length; i++) {
-        let point = strokePoints[i];
-        let strokeAngle = point.angle + PI / 2;
-        let numMarks = Math.max(2, Math.floor(density * 1.2));
-
-        for (let mark = 0; mark < numMarks; mark++) {
-          let alpha = map(mark, 0, numMarks - 1, brushOpacity * 80, brushOpacity * 20);
-          let weight = brushSize * random(2.0, 4.0);
-          let length = brushSize * random(4, 10);
-
-          brushLayer.stroke(0, 0, 0, alpha);
-          brushLayer.strokeWeight(weight);
-          brushLayer.strokeCap(ROUND);
-
-          let angleVariation = random(-0.6, 0.6);
-          let actualAngle = strokeAngle + angleVariation;
-
-          let startX = point.x + cos(actualAngle) * (-length / 2) + random(-brushSize * 1.5, brushSize * 1.5);
-          let startY = point.y + sin(actualAngle) * (-length / 2) + random(-brushSize * 1.5, brushSize * 1.5);
-          let endX = point.x + cos(actualAngle) * (length / 2) + random(-brushSize, brushSize);
-          let endY = point.y + sin(actualAngle) * (length / 2) + random(-brushSize, brushSize);
-
-          brushLayer.line(startX, startY, endX, endY);
         }
       }
     }

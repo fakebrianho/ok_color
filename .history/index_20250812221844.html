@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Outline Effect</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+
+    .controls {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input[type="range"] {
+      width: 100px;
+    }
+
+    input[type="file"] {
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+
+    button {
+      padding: 8px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #sketch-container {
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      display: inline-block;
+      background: white;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Photo Outline Effect</h1>
+  <p>Upload an image to see it transformed with faint outlines, or use the default sample image.</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label for="fileInput">Upload Image:</label>
+      <input type="file" id="fileInput" accept="image/*">
+    </div>
+    <div class="control-group">
+      <label for="threshold">Threshold:</label>
+      <input type="range" id="threshold" min="0.1" max="1.0" step="0.05" value="0.3">
+      <span id="thresholdValue">0.3</span>
+    </div>
+    <div class="control-group">
+      <label for="opacity">Opacity:</label>
+      <input type="range" id="opacity" min="0.1" max="1.0" step="0.05" value="0.6">
+      <span id="opacityValue">0.6</span>
+    </div>
+    <button onclick="saveImage()">Save Result</button>
+    <button onclick="toggleOriginal()">Toggle Original</button>
+  </div>
+
+  <div id="sketch-container"></div>
+
+  <script>
+    let img;
+    let outlineImg;
+    let threshold = 0.3;
+    let outlineOpacity = 0.6;
+    let showOriginal = false;
+    let imageLoaded = false;
+
+    // Sample image data URL (small geometric pattern)
+    const sampleImageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVY/j//z8DJQAggBhJVQwQQIykKgYIIEZSFQMEECOpigECiJFUxQABxEiqYoAAYiRVMUAAMZKqGCCAGElVDBBAjKQqBgggRlIVAwQQI6mKAQKIkVTFAAHESKpigABiJFUxQAAxkqoYIIAYSVUMEECMpCoGCCBGUhUDBBAjqYoBAmANZAIAAYSNZgAAAABJRU5ErkJggg==";
+
+    function preload() {
+      img = loadImage(sampleImageData);
+    }
+
+    function setup() {
+      let canvas = createCanvas(600, 400);
+      canvas.parent('sketch-container');
+
+      // Set up file input
+      let fileInput = document.getElementById('fileInput');
+      fileInput.addEventListener('change', handleFile);
+
+      // Set up sliders
+      let thresholdSlider = document.getElementById('threshold');
+      let opacitySlider = document.getElementById('opacity');
+
+      thresholdSlider.addEventListener('input', function () {
+        threshold = parseFloat(this.value);
+        document.getElementById('thresholdValue').textContent = threshold;
+        if (imageLoaded) createOutline();
+      });
+
+      opacitySlider.addEventListener('input', function () {
+        outlineOpacity = parseFloat(this.value);
+        document.getElementById('opacityValue').textContent = outlineOpacity;
+      });
+
+      imageLoaded = true;
+      createOutline();
+    }
+
+    function handleFile(event) {
+      let file = event.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        let reader = new FileReader();
+        reader.onload = function (e) {
+          img = loadImage(e.target.result, function () {
+            imageLoaded = true;
+            createOutline();
+          });
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function createOutline() {
+      if (!img) return;
+
+      // Resize image if too large to prevent memory issues
+      let maxSize = 800;
+      let workingImg = img;
+      if (img.width > maxSize || img.height > maxSize) {
+        let ratio = Math.min(maxSize / img.width, maxSize / img.height);
+        workingImg = img.get();
+        workingImg.resize(img.width * ratio, img.height * ratio);
+      }
+
+      // Create a copy for outline processing
+      outlineImg = createGraphics(workingImg.width, workingImg.height);
+      outlineImg.image(workingImg, 0, 0);
+
+      // Load pixels for edge detection
+      outlineImg.loadPixels();
+      let pixels = outlineImg.pixels;
+      let w = workingImg.width;
+      let h = workingImg.height;
+
+      // Create new pixel array directly modifying the existing one
+      let tempPixels = new Uint8ClampedArray(pixels.length);
+
+      // Fill with white initially
+      for (let i = 0; i < tempPixels.length; i += 4) {
+        tempPixels[i] = 255;     // R
+        tempPixels[i + 1] = 255; // G
+        tempPixels[i + 2] = 255; // B
+        tempPixels[i + 3] = 255; // A
+      }
+
+      // Sobel edge detection - simplified and more efficient
+      for (let x = 1; x < w - 1; x++) {
+        for (let y = 1; y < h - 1; y++) {
+          let idx = (x + y * w) * 4;
+
+          // Simplified edge detection using neighboring pixels
+          let tl = getGrayValue(pixels, x - 1, y - 1, w); // top-left
+          let tm = getGrayValue(pixels, x, y - 1, w);   // top-middle
+          let tr = getGrayValue(pixels, x + 1, y - 1, w); // top-right
+          let ml = getGrayValue(pixels, x - 1, y, w);   // middle-left
+          let mr = getGrayValue(pixels, x + 1, y, w);   // middle-right
+          let bl = getGrayValue(pixels, x - 1, y + 1, w); // bottom-left
+          let bm = getGrayValue(pixels, x, y + 1, w);   // bottom-middle
+          let br = getGrayValue(pixels, x + 1, y + 1, w); // bottom-right
+
+          // Sobel operators
+          let gx = (-1 * tl) + (1 * tr) + (-2 * ml) + (2 * mr) + (-1 * bl) + (1 * br);
+          let gy = (-1 * tl) + (-2 * tm) + (-1 * tr) + (1 * bl) + (2 * bm) + (1 * br);
+
+          // Calculate edge magnitude
+          let magnitude = Math.sqrt(gx * gx + gy * gy) / 255;
+
+          // Apply threshold for faint outlines
+          if (magnitude > threshold) {
+            let edgeStrength = Math.max(100, 255 - (magnitude * 150));
+            tempPixels[idx] = edgeStrength;     // R
+            tempPixels[idx + 1] = edgeStrength; // G
+            tempPixels[idx + 2] = edgeStrength; // B
+          }
+        }
+      }< !DOCTYPE html >
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Brushed Photo Outline Effect</title>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+    }
+
+    .controls {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    input[type="range"] {
+      width: 100px;
+    }
+
+    input[type="file"] {
+      padding: 5px;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+
+    button {
+      padding: 8px 15px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #sketch-container {
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      display: inline-block;
+      background: white;
+    }
+
+    .brush-info {
+      font-size: 12px;
+      color: #666;
+      margin-top: 5px;
+    }
+  </style>
+  </head>
+
+  <body>
+    <h1>Brushed Photo Outline Effect</h1>
+    <p>Upload an image to see it transformed with artistic brush-drawn outlines.</p>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="fileInput">Upload Image:</label>
+        <input type="file" id="fileInput" accept="image/*">
+      </div>
+      <div class="control-group">
+        <label for="threshold">Edge Sensitivity:</label>
+        <input type="range" id="threshold" min="0.1" max="1.0" step="0.05" value="0.4">
+        <span id="thresholdValue">0.4</span>
+      </div>
+      <div class="control-group">
+        <label for="brushSize">Brush Size:</label>
+        <input type="range" id="brushSize" min="0.5" max="5.0" step="0.1" value="1.5">
+        <span id="brushSizeValue">1.5</span>
+      </div>
+      <div class="control-group">
+        <label for="brushOpacity">Brush Opacity:</label>
+        <input type="range" id="brushOpacity" min="0.1" max="1.0" step="0.05" value="0.7">
+        <span id="brushOpacityValue">0.7</span>
+      </div>
+      <div class="control-group">
+        <label for="density">Brush Density:</label>
+        <input type="range" id="density" min="1" max="10" step="1" value="4">
+        <span id="densityValue">4</span>
+      </div>
+      <div class="control-group">
+        <label for="bgOpacity">Background Opacity:</label>
+        <input type="range" id="bgOpacity" min="0.1" max="1.0" step="0.05" value="0.3">
+        <span id="bgOpacityValue">0.3</span>
+      </div>
+      <button onclick="redrawOutlines()">Redraw</button>
+      <button onclick="saveImage()">Save Result</button>
+      <button onclick="toggleOriginal()">Toggle Original</button>
+    </div>
+
+    <div class="brush-info">
+      Brush strokes are drawn along detected edges with natural variation and texture
+    </div>
+
+    <div id="sketch-container"></div>
+
+    <script>
+                  let img;
+                  let brushLayer;
+                  let edges = [];
+                  let threshold = 0.4;
+                  let brushSize = 1.5;
+                  let brushOpacity = 0.7;
+                  let density = 4;
+                  let bgOpacity = 0.3;
+                  let showOriginal = false;
+                  let imageLoaded = false;
+                  let isDrawing = false;
+
+                  // Sample image data URL
+                  const sampleImageData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVBiVY/j//z8DJQAggBhJVQwQQIykKgYIIEZSFQMEECOpigECiJFUxQABxEiqYoAAYiRVMUAAMZKqGCCAGElVDBBAjKQqBgggRlIVAwQQI6mKAQKIkVTFAAHESKpigABiJFUxQAAxkqoYIIAYSVUMEECMpCoGCCBGUhUDBBAjqYoBAmANZAIAAYSNZgAAAABJRU5ErkJggg==";
+
+                  function preload() {
+                    img = loadImage(sampleImageData);
+        }
+
+                  function setup() {
+                    let canvas = createCanvas(800, 600);
+                  canvas.parent('sketch-container');
+
+                  // Initialize brush layer
+                  brushLayer = createGraphics(width, height);
+                  brushLayer.background(255, 255, 255, 0);
+
+                  // Set up file input
+                  let fileInput = document.getElementById('fileInput');
+                  fileInput.addEventListener('change', handleFile);
+
+            // Set up sliders
+            setupSlider('threshold', (val) => {threshold = val; detectEdges(); });
+            setupSlider('brushSize', (val) => {brushSize = val; });
+            setupSlider('brushOpacity', (val) => {brushOpacity = val; });
+            setupSlider('density', (val) => {density = parseInt(val); });
+            setupSlider('bgOpacity', (val) => {bgOpacity = val; });
+
+                  imageLoaded = true;
+                  detectEdges();
+        }
+
+                  function setupSlider(id, callback) {
+                    let slider = document.getElementById(id);
+                  let valueSpan = document.getElementById(id + 'Value');
+                  slider.addEventListener('input', function() {
+                    let val = id === 'density' ? parseInt(this.value) : parseFloat(this.value);
+                  valueSpan.textContent = val;
+                  callback(val);
+            });
+        }
+
+                  function handleFile(event) {
+                    let file = event.target.files[0];
+                  if (file && file.type.startsWith('image/')) {
+                    let reader = new FileReader();
+                  reader.onload = function(e) {
+                    img = loadImage(e.target.result, function () {
+                      imageLoaded = true;
+                      detectEdges();
+                    });
+                };
+                  reader.readAsDataURL(file);
+            }
+        }
+
+                  function detectEdges() {
+            if (!img || isDrawing) return;
+
+                  edges = [];
+
+                  // Resize image if too large
+                  let maxSize = 600;
+                  let workingImg = img;
+            if (img.width > maxSize || img.height > maxSize) {
+                    let ratio = Math.min(maxSize / img.width, maxSize / img.height);
+                  workingImg = img.get();
+                  workingImg.resize(img.width * ratio, img.height * ratio);
+            }
+
+                  // Calculate how the image will be displayed on canvas
+                  let displayWidth = width;
+                  let displayHeight = height;
+                  let imgRatio = workingImg.width / workingImg.height;
+                  let canvasRatio = width / height;
+            
+            if (imgRatio > canvasRatio) {
+                    displayHeight = width / imgRatio;
+            } else {
+                    displayWidth = height * imgRatio;
+            }
+
+                  let displayX = (width - displayWidth) / 2;
+                  let displayY = (height - displayHeight) / 2;
+
+                  // Load pixels for edge detection
+                  workingImg.loadPixels();
+                  let pixels = workingImg.pixels;
+                  let w = workingImg.width;
+                  let h = workingImg.height;
+
+                  // Find edges using simplified Sobel
+                  for (let x = 2; x < w - 2; x += 2) { // Skip pixels for performance
+                for (let y = 2; y < h - 2; y += 2) {
+                    let gx = 0, gy = 0;
+
+                  // Simplified 3x3 Sobel
+                  let tl = getGrayValue(pixels, x-1, y-1, w);
+                  let tm = getGrayValue(pixels, x, y-1, w);
+                  let tr = getGrayValue(pixels, x+1, y-1, w);
+                  let ml = getGrayValue(pixels, x-1, y, w);
+                  let mr = getGrayValue(pixels, x+1, y, w);
+                  let bl = getGrayValue(pixels, x-1, y+1, w);
+                  let bm = getGrayValue(pixels, x, y+1, w);
+                  let br = getGrayValue(pixels, x+1, y+1, w);
+
+                  gx = (-tl + tr - 2*ml + 2*mr - bl + br);
+                  gy = (-tl - 2*tm - tr + bl + 2*bm + br);
+
+                  let magnitude = Math.sqrt(gx * gx + gy * gy) / 255;
+                    
+                    if (magnitude > threshold) {
+                    // Map coordinates to actual display position on canvas
+                    let canvasX = displayX + map(x, 0, w, 0, displayWidth);
+                  let canvasY = displayY + map(y, 0, h, 0, displayHeight);
+
+                  edges.push({
+                    x: canvasX,
+                  y: canvasY,
+                  strength: magnitude,
+                  angle: Math.atan2(gy, gx)
+                        });
+                    }
+                }
+            }
+
+                  drawBrushStrokes();
+        }
+
+                  function drawBrushStrokes() {
+            if (!edges.length || isDrawing) return;
+
+                  isDrawing = true;
+                  brushLayer.clear();
+
+                  // Group nearby edges into stroke paths
+                  let strokes = [];
+                  let usedEdges = new Set();
+
+                  for (let i = 0; i < edges.length; i++) {
+                if (usedEdges.has(i)) continue;
+
+                  let stroke = [edges[i]];
+                  usedEdges.add(i);
+
+                  // Find connected edges within a small radius
+                  let searchRadius = 15;
+                  let extended = true;
+
+                  while (extended && stroke.length < 20) {
+                    extended = false;
+                  let lastEdge = stroke[stroke.length - 1];
+
+                  for (let j = 0; j < edges.length; j++) {
+                        if (usedEdges.has(j)) continue;
+
+                  let dist = Math.sqrt(
+                  Math.pow(edges[j].x - lastEdge.x, 2) +
+                  Math.pow(edges[j].y - lastEdge.y, 2)
+                  );
+
+                  if (dist < searchRadius) {
+                    stroke.push(edges[j]);
+                  usedEdges.add(j);
+                  extended = true;
+                  break;
+                        }
+                    }
+                }
+                
+                if (stroke.length > 2) {
+                    strokes.push(stroke);
+                }
+            }
+
+                  // Draw brush strokes
+                  brushLayer.strokeCap(ROUND);
+                  brushLayer.noFill();
+
+                  for (let stroke of strokes) {
+                    drawBrushStroke(stroke);
+            }
+
+                  isDrawing = false;
+        }
+
+                  function drawBrushStroke(strokePoints) {
+            if (strokePoints.length < 2) return;
+
+                  // Draw individual brush marks along the stroke path
+                  for (let i = 0; i < strokePoints.length; i++) {
+                    let point = strokePoints[i];
+
+                  // Calculate stroke direction perpendicular to edge direction
+                  let strokeAngle = point.angle + PI/2; // Perpendicular to edge
+
+                  // Draw multiple brush marks for texture
+                  let numMarks = Math.max(1, Math.floor(density));
+
+                  for (let mark = 0; mark < numMarks; mark++) {
+                    let alpha = map(mark, 0, numMarks - 1, brushOpacity * 255, brushOpacity * 80);
+                  let weight = brushSize * random(0.5, 1.5);
+                  let length = brushSize * random(2, 6);
+
+                  brushLayer.stroke(0, 0, 0, alpha);
+                  brushLayer.strokeWeight(weight);
+                  brushLayer.strokeCap(ROUND);
+
+                  // Calculate start and end points of brush mark
+                  let angleVariation = random(-0.3, 0.3); // Add natural variation
+                  let actualAngle = strokeAngle + angleVariation;
+
+                  let startX = point.x + cos(actualAngle) * (-length/2) + random(-brushSize*0.5, brushSize*0.5);
+                  let startY = point.y + sin(actualAngle) * (-length/2) + random(-brushSize*0.5, brushSize*0.5);
+                  let endX = point.x + cos(actualAngle) * (length/2) + random(-brushSize*0.5, brushSize*0.5);
+                  let endY = point.y + sin(actualAngle) * (length/2) + random(-brushSize*0.5, brushSize*0.5);
+
+                  // Draw the brush mark
+                  brushLayer.line(startX, startY, endX, endY);
+
+                  // Add some shorter cross-hatching marks occasionally
+                  if (random() < 0.2) {
+                    let crossAngle = actualAngle + PI/4;
+                  let crossLength = length * 0.6;
+                  let crossStartX = point.x + cos(crossAngle) * (-crossLength/2);
+                  let crossStartY = point.y + sin(crossAngle) * (-crossLength/2);
+                  let crossEndX = point.x + cos(crossAngle) * (crossLength/2);
+                  let crossEndY = point.y + sin(crossAngle) * (crossLength/2);
+
+                  brushLayer.stroke(0, 0, 0, alpha * 0.5);
+                  brushLayer.strokeWeight(weight * 0.7);
+                  brushLayer.line(crossStartX, crossStartY, crossEndX, crossEndY);
+                    }
+                }
+            }
+        }
+
+                  function getGrayValue(pixels, x, y, w) {
+                    let idx = (x + y * w) * 4;
+                  return (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+        }
+
+                  function draw() {
+                    background(255);
+
+                  if (!img) return;
+
+                  // Calculate display size maintaining aspect ratio
+                  let displayWidth = width;
+                  let displayHeight = height;
+                  let imgRatio = img.width / img.height;
+                  let canvasRatio = width / height;
+            
+            if (imgRatio > canvasRatio) {
+                    displayHeight = width / imgRatio;
+            } else {
+                    displayWidth = height * imgRatio;
+            }
+
+                  let x = (width - displayWidth) / 2;
+                  let y = (height - displayHeight) / 2;
+
+                  if (showOriginal) {
+                    // Show original image
+                    image(img, x, y, displayWidth, displayHeight);
+            } else {
+                    // Show faded original image with adjustable opacity
+                    tint(255, bgOpacity * 255);
+                  image(img, x, y, displayWidth, displayHeight);
+                  noTint();
+
+                  // Overlay brush strokes
+                  image(brushLayer, 0, 0);
+            }
+        }
+
+                  function redrawOutlines() {
+            if (imageLoaded) {
+                    detectEdges();
+            }
+        }
+
+                  function saveImage() {
+            if (brushLayer) {
+                    save('brushed-outline.png');
+            }
+        }
+
+                  function toggleOriginal() {
+                    showOriginal = !showOriginal;
+        }
+    </script>
+  </body>
+
+</html>
+
+// Update pixels efficiently
+for (let i = 0; i < pixels.length; i++) { outlineImg.pixels[i]=tempPixels[i]; } outlineImg.updatePixels(); } function
+  getGrayValue(pixels, x, y, w) { let idx=(x + y * w) * 4; return (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+  } function draw() { background(255); if (!img) return; // Calculate display size maintaining aspect ratio let
+  displayWidth=width; let displayHeight=height; let imgRatio=img.width / img.height; let canvasRatio=width / height; if
+  (imgRatio> canvasRatio) {
+  displayHeight = width / imgRatio;
+  } else {
+  displayWidth = height * imgRatio;
+  }
+
+  let x = (width - displayWidth) / 2;
+  let y = (height - displayHeight) / 2;
+
+  if (showOriginal) {
+  // Show original image
+  image(img, x, y, displayWidth, displayHeight);
+  } else if (outlineImg) {
+  // Show original image first (faded)
+  tint(255, 100);
+  image(img, x, y, displayWidth, displayHeight);
+  noTint();
+
+  // Overlay outline with specified opacity
+  tint(255, outlineOpacity * 255);
+  image(outlineImg, x, y, displayWidth, displayHeight);
+  noTint();
+  }
+  }
+
+  function saveImage() {
+  if (outlineImg) {
+  save('photo-outline.png');
+  }
+  }
+
+  function toggleOriginal() {
+  showOriginal = !showOriginal;
+  }
+  </script>
+  </body>
+
+  </html>
